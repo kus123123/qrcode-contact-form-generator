@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contact Card</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>Contact Information</h1>
+        <p id="page-description">
+          This page becomes read-only after the first visitor saves the details.
+        </p>
+      </section>
+
+      <section class="panel">
+        <div id="contact-status" class="status"></div>
+        <div id="contact-content"></div>
+      </section>
+    </main>
+
+    <script>
+      const contactStatus = document.getElementById("contact-status");
+      const contactContent = document.getElementById("contact-content");
+      const pageDescription = document.getElementById("page-description");
+      const contactId = window.location.pathname.split("/").pop();
+
+      function setStatus(message, type) {
+        contactStatus.textContent = message;
+        contactStatus.className = `status ${type || ""}`.trim();
+      }
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function renderView(contact, message) {
+        pageDescription.textContent = contact.locked
+          ? "This contact card is locked and visible in read-only mode."
+          : "Edit access has already been claimed. Other visitors can only view the current details.";
+
+        contactContent.innerHTML = `
+          <div class="info-header">
+            <div>
+              <h2>${escapeHtml(contact.fullName)}</h2>
+              <p class="muted">${escapeHtml(contact.title || "No title")}${contact.company ? ` at ${escapeHtml(contact.company)}` : ""}</p>
+            </div>
+            <span class="pill ${contact.locked ? "locked" : ""}">
+              ${contact.locked ? "Locked" : "Editable now"}
+            </span>
+          </div>
+          <div class="contact-details">
+            <div><strong>Phone</strong> ${escapeHtml(contact.phone) || "-"}</div>
+            <div><strong>Email</strong> ${escapeHtml(contact.email) || "-"}</div>
+            <div><strong>Website</strong> ${escapeHtml(contact.website) || "-"}</div>
+            <div><strong>Address</strong> ${escapeHtml(contact.address) || "-"}</div>
+            <div><strong>Notes</strong> ${escapeHtml(contact.notes) || "-"}</div>
+          </div>
+          <div class="actions">
+            <a class="link" href="/api/contacts/${contactId}/vcard">Download contact (.vcf)</a>
+          </div>
+        `;
+
+        if (message) {
+          setStatus(message, contact.locked ? "success" : "");
+        }
+      }
+
+      function renderEditable(contact, editToken) {
+        contactContent.innerHTML = `
+          <form id="lock-form" class="two-col">
+            <label>
+              Full name
+              <input name="fullName" required value="${escapeHtml(contact.fullName)}" />
+            </label>
+            <label>
+              Phone
+              <input name="phone" value="${escapeHtml(contact.phone)}" />
+            </label>
+            <label>
+              Email
+              <input name="email" type="email" value="${escapeHtml(contact.email)}" />
+            </label>
+            <label>
+              Company
+              <input name="company" value="${escapeHtml(contact.company)}" />
+            </label>
+            <label>
+              Job title
+              <input name="title" value="${escapeHtml(contact.title)}" />
+            </label>
+            <label>
+              Website
+              <input name="website" value="${escapeHtml(contact.website)}" />
+            </label>
+            <label style="grid-column: 1 / -1;">
+              Address
+              <textarea name="address">${escapeHtml(contact.address)}</textarea>
+            </label>
+            <label style="grid-column: 1 / -1;">
+              Notes
+              <textarea name="notes">${escapeHtml(contact.notes)}</textarea>
+            </label>
+            <div class="actions" style="grid-column: 1 / -1;">
+              <button class="primary" type="submit">Save and Lock</button>
+            </div>
+          </form>
+        `;
+
+        document.getElementById("lock-form").addEventListener("submit", async (event) => {
+          event.preventDefault();
+          setStatus("Saving and locking the contact card...", "");
+
+          const payload = Object.fromEntries(new FormData(event.target).entries());
+          payload.editToken = editToken;
+          const response = await fetch(`/api/contacts/${contactId}/lock`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const result = await response.json();
+
+          if (!response.ok) {
+            setStatus(result.error || "Unable to lock this contact.", "error");
+            return;
+          }
+
+          setStatus("Contact saved and locked.", "success");
+          renderView(result);
+        });
+      }
+
+      async function loadContact() {
+        const response = await fetch(`/api/contacts/${contactId}`);
+        const contact = await response.json();
+
+        if (!response.ok) {
+          setStatus(contact.error || "Contact not found.", "error");
+          contactContent.innerHTML = "";
+          return;
+        }
+
+        if (!contact.locked) {
+          const accessResponse = await fetch(`/api/contacts/${contactId}/first-open`, { method: "POST" });
+          const access = await accessResponse.json();
+
+          if (access.granted) {
+            setStatus("First scan detected. You can edit this page one time before locking it.", "");
+            renderEditable(contact, access.editToken);
+            return;
+          }
+
+          renderView(contact, "Edit access is already claimed. This page is view-only until it gets locked.");
+          return;
+        }
+
+        renderView(contact, "This contact page is locked.");
+      }
+
+      loadContact();
+    </script>
+  </body>
+</html>

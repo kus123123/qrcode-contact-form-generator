@@ -1,0 +1,19 @@
+services:
+  qr-contact-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qr-contact-app
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgres://postgres:kr1234@pgvector:5432/qr_contact_app
+    ports:
+      - "3001:3000"
+    networks:
+      - n8n-docker_n8n-network
+
+networks:
+  n8n-docker_n8n-network:
+    external: true

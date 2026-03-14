@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QR Contact Admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>QR Contact Admin</h1>
+        <p>
+          Create a contact page, generate its QR code, and let the first scan
+          complete and lock the final details.
+        </p>
+      </section>
+
+      <section class="admin-grid">
+        <article class="panel">
+          <h2>Create Contact</h2>
+          <form id="contact-form" class="two-col">
+            <label>
+              Full name
+              <input name="fullName" required />
+            </label>
+            <label>
+              Phone
+              <input name="phone" />
+            </label>
+            <label>
+              Email
+              <input name="email" type="email" />
+            </label>
+            <label>
+              Company
+              <input name="company" />
+            </label>
+            <label>
+              Job title
+              <input name="title" />
+            </label>
+            <label>
+              Website
+              <input name="website" />
+            </label>
+            <label style="grid-column: 1 / -1;">
+              Address
+              <textarea name="address"></textarea>
+            </label>
+            <label style="grid-column: 1 / -1;">
+              Notes
+              <textarea name="notes"></textarea>
+            </label>
+            <div class="actions" style="grid-column: 1 / -1;">
+              <button class="primary" type="submit">Create QR Contact</button>
+            </div>
+            <div id="form-status" class="status" style="grid-column: 1 / -1;"></div>
+          </form>
+        </article>
+
+        <aside class="panel">
+          <h2>Latest QR Code</h2>
+          <div id="latest-result" class="qr-preview empty">
+            Create a contact to see its QR code and shareable link.
+          </div>
+        </aside>
+      </section>
+
+      <section class="panel">
+        <div class="info-header">
+          <div>
+            <h2>Saved Contacts</h2>
+            <p>Each card shows whether the public page is still editable or already locked.</p>
+          </div>
+          <button id="refresh-button" class="secondary" type="button">Refresh</button>
+        </div>
+        <div id="contact-list" class="card-list"></div>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("contact-form");
+      const formStatus = document.getElementById("form-status");
+      const latestResult = document.getElementById("latest-result");
+      const contactList = document.getElementById("contact-list");
+      const refreshButton = document.getElementById("refresh-button");
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function formToObject(formElement) {
+        return Object.fromEntries(new FormData(formElement).entries());
+      }
+
+      function setStatus(element, message, type) {
+        element.textContent = message;
+        element.className = `status ${type || ""}`.trim();
+      }
+
+      function renderLatest(contact) {
+        latestResult.className = "qr-preview";
+        latestResult.innerHTML = `
+          <img src="${contact.qrCodeDataUrl}" alt="QR code for ${escapeHtml(contact.fullName)}" />
+          <p><strong>${escapeHtml(contact.fullName)}</strong></p>
+          <p><a class="link" href="${contact.publicUrl}" target="_blank" rel="noreferrer">${contact.publicUrl}</a></p>
+          <p class="muted">The first scan opens an editable page. After the person saves it, the card becomes locked.</p>
+        `;
+      }
+
+      function renderContacts(contacts) {
+        if (!contacts.length) {
+          contactList.innerHTML = `<div class="empty">No contacts created yet.</div>`;
+          return;
+        }
+
+        contactList.innerHTML = contacts
+          .map(
+            (contact) => `
+              <article class="contact-card">
+                <header>
+                  <div>
+                    <h3>${escapeHtml(contact.fullName)}</h3>
+                    <p class="muted">${escapeHtml(contact.title || "No title")}${contact.company ? ` at ${escapeHtml(contact.company)}` : ""}</p>
+                  </div>
+                  <span class="pill ${contact.locked ? "locked" : ""}">
+                    ${contact.locked ? "Locked" : contact.firstOpenedAt ? "Edit claimed" : "Editable on first scan"}
+                  </span>
+                </header>
+                <div class="contact-details">
+                  <div><strong>Phone</strong> ${escapeHtml(contact.phone) || "-"}</div>
+                  <div><strong>Email</strong> ${escapeHtml(contact.email) || "-"}</div>
+                  <div><strong>Website</strong> ${escapeHtml(contact.website) || "-"}</div>
+                  <div><strong>Opened</strong> ${contact.firstOpenedAt ? new Date(contact.firstOpenedAt).toLocaleString() : "Not scanned yet"}</div>
+                </div>
+                <div class="actions">
+                  <a class="link" href="${contact.publicUrl}" target="_blank" rel="noreferrer">Open public page</a>
+                </div>
+              </article>
+            `
+          )
+          .join("");
+      }
+
+      async function loadContacts() {
+        contactList.innerHTML = `<div class="empty">Loading contacts...</div>`;
+        const response = await fetch("/api/contacts");
+        const contacts = await response.json();
+        renderContacts(contacts);
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setStatus(formStatus, "Creating contact and QR code...", "");
+
+        const response = await fetch("/api/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formToObject(form))
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          setStatus(formStatus, result.error || "Something went wrong.", "error");
+          return;
+        }
+
+        setStatus(formStatus, "Contact created successfully.", "success");
+        renderLatest(result);
+        form.reset();
+        await loadContacts();
+      });
+
+      refreshButton.addEventListener("click", loadContacts);
+      loadContacts();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "qr-contact-locker",
+  "version": "1.0.0",
+  "description": "Create QR codes that open a contact card editable only on first scan.",
+  "packageManager": "pnpm@10.6.5",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^4.21.2",
+    "pg": "^8.16.3",
+    "qrcode": "^1.5.4"
+  }
+}
